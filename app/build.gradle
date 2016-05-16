@@ -24,5 +24,12 @@ dependencies {
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.1.1'
     compile 'com.android.support:design:23.1.1'
-    compile 'com.google.android.gms:play-services:7.8.0'
+    compile 'com.google.android.gms:play-services-drive:7.8.0'
+    compile 'com.google.android.gms:play-services-identity:7.8.0'
+    compile 'com.google.api-client:google-api-client-android:1.19.0' exclude module: 'httpclient'
+    compile 'com.google.http-client:google-http-client-gson:1.19.0' exclude module: 'httpclient'
+    compile 'com.google.apis:google-api-services-drive:v2-rev219-1.22.0'
+}
+configurations {
+    compile.exclude group: "org.apache.httpcomponents", module: "httpclient"
 }
