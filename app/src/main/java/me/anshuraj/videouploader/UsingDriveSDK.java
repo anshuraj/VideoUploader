@@ -2,16 +2,23 @@ package me.anshuraj.videouploader;
 
 import android.accounts.AccountManager;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.google.api.client.extensions.android.http.AndroidHttp;
@@ -29,7 +36,6 @@ import com.google.api.services.drive.model.File;
 
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Collections;
@@ -40,27 +46,23 @@ import java.util.Collections;
 public class UsingDriveSDK extends AppCompatActivity  {
 
     Button btn;
-
     GoogleAccountCredential credential;
     Drive service ;
 
     private static final String PREF_ACCOUNT_NAME = "accountName";
-    private static final String TAG = "Log TAG";
+    private static final String TAG = "TAG";
     private static final int FILE_SELECT_CODE = 3;
     private static final int REQUEST_AUTHORIZATION = 1;
     private  static final int COMPLETE_AUTHORIZATION_REQUEST_CODE = 101;
     private  static final int REQUEST_ACCOUNT_PICKER = 1001;
 
-    final HttpTransport httpTransport = AndroidHttp.newCompatibleTransport();
-
-    final JsonFactory jsonFactory = GsonFactory.getDefaultInstance();
-
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        btn = (Button) findViewById(R.id.button);
-
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        btn = (Button) findViewById(R.id.uploadBtn);
 
         credential = GoogleAccountCredential.usingOAuth2(this, Collections.singleton(DriveScopes.DRIVE));
         SharedPreferences settings = getPreferences(Context.MODE_PRIVATE);
@@ -68,33 +70,98 @@ public class UsingDriveSDK extends AppCompatActivity  {
         service = new Drive.Builder(AndroidHttp.newCompatibleTransport(), new GsonFactory(), credential).build();
 
         Log.i(TAG," after credential");
-        startActivityForResult(getIntent() ,COMPLETE_AUTHORIZATION_REQUEST_CODE);
-        Log.i(TAG,"startActivityForResult(getIntent() ,COMPLETE_AUTHORIZATION_REQUEST_CODE);");
 
-        //upload();
-        //showFileChooser();
-        //Log.i(TAG," after showFileChooser()");
-        /*btn.setOnClickListener(new View.OnClickListener() {
+        btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                showFileChooser();
+                startActivityForResult(getIntent() ,COMPLETE_AUTHORIZATION_REQUEST_CODE);
             }
-        });*/
+        });
+
     }
 
     void upload(final String path){
-        Thread thread = new Thread(new Runnable() {
+        new AsyncTask<String, Void, Void>() {
+            public ProgressDialog pd;
+            AlertDialog.Builder builder;
+            class CustomProgressListener implements MediaHttpUploaderProgressListener {
+                public void progressChanged(MediaHttpUploader uploader) throws IOException {
+                    Log.i(TAG," inside customprogressListener ");
+                    switch (uploader.getUploadState()) {
+                        case INITIATION_STARTED:
+                            System.out.println("Initiation has started!");
+                            pd.setIndeterminate(true);
+                            break;
+                        case INITIATION_COMPLETE:
+                            System.out.println("Initiation is complete!");
+                            pd.setIndeterminate(false);
+                            break;
+                        case MEDIA_IN_PROGRESS:
+                            System.out.println(uploader.getProgress()*100);
+                            pd.setProgress((int) (uploader.getProgress()*100));
+                            break;
+                        case MEDIA_COMPLETE:
+                            System.out.println("Upload is complete!");
+                            pd.setProgress(100);
+                    }
+                }
+            }
 
             @Override
-            public void run() {
-                Log.d(TAG," Inside upload thread ");
+            protected void onPreExecute() {
+                super.onPreExecute();
+                builder = new AlertDialog.Builder(UsingDriveSDK.this);
+                pd = new ProgressDialog(UsingDriveSDK.this);
+                pd.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+                pd.setCancelable(false);
+                //pd.setIndeterminate(true);
+                pd.setMessage("Uploading...");
+                pd.setProgress(0);
+                pd.setButton(DialogInterface.BUTTON_NEGATIVE, "Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        finish();
+                    }
+                });
+                pd.show();
+            }
+
+            @Override
+            protected void onPostExecute(Void aVoid) {
+                super.onPostExecute(aVoid);
+                if(pd!=null && pd.isShowing())
+                    pd.cancel();
+
+                builder.setCancelable(false);
+                builder.setMessage("Uploaded!")
+                        .setPositiveButton("Close", new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int id) {
+                                finish();
+                            }
+                        });
+
+                AlertDialog alert = builder.create();
+                alert.show();
+
+            }
+
+
+            @Override
+            protected void onProgressUpdate(Void... values) {
+                super.onProgressUpdate(values);
+                //pd.setProgress(1);
+            }
+
+            @Override
+            protected Void doInBackground(String... params) {
+                Log.d(TAG, " Inside upload thread ");
                 try {
                     // Try to perform a Drive API request, for instance:
                     java.io.File mediaFile = new java.io.File(path);
                     InputStreamContent mediaContent =
-                            new InputStreamContent("image/jpeg",
+                            new InputStreamContent("*/*",
                                     new BufferedInputStream(new FileInputStream(mediaFile)));
-
+                    long length = mediaFile.length();
                     mediaContent.setLength(mediaFile.length());
 
                     File fileMetadata = new File();
@@ -104,19 +171,20 @@ public class UsingDriveSDK extends AppCompatActivity  {
                     Drive.Files.Insert request = service.files().insert(fileMetadata, mediaContent);
                     request.getMediaHttpUploader().setProgressListener(new CustomProgressListener());
                     request.execute();
-
+                    //publishProgress(length);
                     //File file = service.files().create(file, mediaContent).execute();
 
                 } catch (UserRecoverableAuthIOException e) {
-                    Log.i(TAG,"User Recoverable Exception ");
+                    Log.i(TAG, "User Recoverable Exception ");
                     startActivityForResult(e.getIntent(), COMPLETE_AUTHORIZATION_REQUEST_CODE);
                 } catch (IOException e) {
                     Log.i("Err", "IOException");
                 }
+                return null;
             }
-        });
+        }.execute();
 
-        thread.start();
+
 
     }
 
@@ -210,23 +278,6 @@ public class UsingDriveSDK extends AppCompatActivity  {
         }
     }
 
-    class CustomProgressListener implements MediaHttpUploaderProgressListener {
-        public void progressChanged(MediaHttpUploader uploader) throws IOException {
-            Log.i(TAG," inside customprogressListener ");
-            switch (uploader.getUploadState()) {
-                case INITIATION_STARTED:
-                    System.out.println("Initiation has started!");
-                    break;
-                case INITIATION_COMPLETE:
-                    System.out.println("Initiation is complete!");
-                    break;
-                case MEDIA_IN_PROGRESS:
-                    System.out.println(uploader.getProgress()*100);
-                    break;
-                case MEDIA_COMPLETE:
-                    System.out.println("Upload is complete!");
-            }
-        }
-    }
+
 
 }

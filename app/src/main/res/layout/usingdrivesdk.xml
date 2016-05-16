@@ -9,4 +9,5 @@
         android:text="New Button"
         android:id="@+id/button"
         android:layout_gravity="center_horizontal" />
+
 </LinearLayout>
